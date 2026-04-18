@@ -38,10 +38,7 @@
 - Use the Planner -> Developer -> Reviewer workflow for non-trivial tasks.
 - The working contract is the active plan file at `%%ACTIVE_PLANS_DIR%%/{story-id}.md`.
 - Requests prefixed with `[solo]` stay in the current agent only. That changes routing, not repo safeguards.
-- Commits that touch guarded paths must name exactly one plan with `Plan: <plan-id>`.
-- Before guarded commits, run `pnpm plan:ensure -- <plan-id>`.
-- Use `Plan: none (trivial)` only for genuine trivial changes.
-- Use `Plan: bypass (<reason>)` only for intentional audited exceptions.
+- Before starting implementation work, make sure the active plan exists and run `pnpm plan:ensure -- <plan-id>`.
 - Keep the plan metadata current: `status`, `owner_name`, `owner_email`, and `branch`.
 %%TRACKER_POLICY_SECTION%%
 

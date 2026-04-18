@@ -5,7 +5,7 @@ Reusable CLI to scaffold the harness-engineering workflow into any repo.
 It installs:
 
 - `AGENTS.md` and `CONTRIBUTING.md`
-- plan helper scripts and commit-msg hook
+- plan helper scripts
 - Planner / Developer / Reviewer role docs
 - optional Codex and Claude subagent wrappers
 - profile-aware plan directories
@@ -59,10 +59,9 @@ What it does:
 
 - scaffolds into the current working directory when no path is provided
 - creates the target directory if an explicit target path is given
-- writes workflow docs, hooks, scripts, and agent wrappers
+- writes workflow docs, scripts, and agent wrappers
 - creates or updates `package.json` with `plan:*` scripts
 - initializes git if needed
-- sets `core.hooksPath` to `.githooks`
 
 ### `adopt`
 
@@ -86,7 +85,7 @@ Checks:
 - expected scaffolded files exist
 - active/archive plan directories exist
 - `package.json` contains the plan scripts
-- git hook path is configured
+- git availability/repo status is reported when available
 
 ## Profile Attribute
 

@@ -104,6 +104,42 @@ run("adopt preserves existing package scripts while adding plan scripts", () => 
   assert.equal(packageJson.scripts["plan:ensure"], "node scripts/plan.mjs ensure");
 });
 
+run("adopt removes legacy commit-hook files from older scaffolds", () => {
+  const targetDir = path.join(newWorkspace("legacy"), "repo");
+  fs.mkdirSync(path.join(targetDir, ".githooks"), { recursive: true });
+  fs.mkdirSync(path.join(targetDir, "scripts", "hooks"), { recursive: true });
+  fs.mkdirSync(path.join(targetDir, ".harness-engineering"), { recursive: true });
+  fs.writeFileSync(path.join(targetDir, ".githooks", "commit-msg"), "legacy", "utf8");
+  fs.writeFileSync(path.join(targetDir, "scripts", "hooks", "install.sh"), "legacy", "utf8");
+  fs.writeFileSync(path.join(targetDir, "scripts", "hooks", "plan-gate.sh"), "legacy", "utf8");
+  fs.writeFileSync(path.join(targetDir, ".harness-engineering", "plan-bypass.log"), "legacy", "utf8");
+  fs.writeFileSync(path.join(targetDir, ".gitignore"), "/.harness-engineering/plan-bypass.log\n", "utf8");
+
+  scaffoldRepository({
+    targetDir,
+    workflowVersion: "0.1.0",
+    profile: "generic",
+    agents: "codex",
+    guardedPaths: "src/",
+    mode: "adopt",
+    force: true,
+    gitInit: false
+  });
+
+  assert.equal(fs.existsSync(path.join(targetDir, ".githooks", "commit-msg")), false);
+  assert.equal(fs.existsSync(path.join(targetDir, "scripts", "hooks", "install.sh")), false);
+  assert.equal(fs.existsSync(path.join(targetDir, "scripts", "hooks", "plan-gate.sh")), false);
+  assert.equal(fs.existsSync(path.join(targetDir, ".harness-engineering", "plan-bypass.log")), false);
+  assert.equal(fs.existsSync(path.join(targetDir, ".githooks")), false);
+  assert.equal(fs.existsSync(path.join(targetDir, "scripts", "hooks")), false);
+  assert.equal(
+    fs.readFileSync(path.join(targetDir, ".gitignore"), "utf8").includes(
+      "/.harness-engineering/plan-bypass.log",
+    ),
+    false,
+  );
+});
+
 run("doctor reports the scaffolded files", () => {
   const targetDir = path.join(newWorkspace("doctor"), "repo");
   scaffoldRepository({

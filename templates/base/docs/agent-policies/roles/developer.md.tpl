@@ -14,5 +14,4 @@ Responsibilities:
 Must not:
 
 - expand scope without updating the plan
-- commit guarded changes without `Plan: <plan-id>`
-- bypass the plan gate without a genuine audited trailer
+- skip plan ownership/plan state updates while doing the work

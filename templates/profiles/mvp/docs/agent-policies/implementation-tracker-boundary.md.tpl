@@ -6,5 +6,5 @@ Do not update the implementation tracker for:
 
 - harness-only changes
 - repo meta changes
-- workflow docs or hook changes
+- workflow docs or automation changes
 - other work that does not change the delivered solution

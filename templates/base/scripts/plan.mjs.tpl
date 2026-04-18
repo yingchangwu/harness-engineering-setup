@@ -39,7 +39,6 @@ const repoRoot = resolveRepoRoot();
 const workflowConfig = loadWorkflowConfig();
 const activePlansDir = path.join(repoRoot, workflowConfig.paths.activePlansDir);
 const archivePlansDir = path.join(repoRoot, workflowConfig.paths.archivePlansDir);
-const bypassLogPath = path.join(repoRoot, ".harness-engineering", "plan-bypass.log");
 
 main(process.argv.slice(2));
 
@@ -67,9 +66,6 @@ function main(args) {
       break;
     case "archive":
       commandArchive(rest);
-      break;
-    case "hook":
-      commandHook(rest);
       break;
     case "help":
     case "--help":
@@ -319,104 +315,6 @@ function commandArchive(args) {
   console.log(`Archived ${planId} -> ${toRepoRelativePath(archivePath)}`);
 }
 
-function commandHook(args) {
-  const [commitMessageFile] = args;
-  if (!commitMessageFile || !fs.existsSync(commitMessageFile)) {
-    process.exit(0);
-  }
-
-  const guardedPrefixes = guardedPrefixes();
-  const stagedFiles = stagedFilesInIndex();
-  const touchedGuardedFiles = stagedFiles.filter((file) =>
-    guardedPrefixes.some((prefix) => file.startsWith(prefix)),
-  );
-
-  if (touchedGuardedFiles.length === 0) {
-    process.exit(0);
-  }
-
-  const commitMessage = fs.readFileSync(commitMessageFile, "utf8");
-  const trailer = parsePlanTrailer(commitMessage);
-
-  if (trailer.kind === "missing") {
-    const activePlanIds = loadAllActivePlans().map((plan) => plan.id);
-    const suggestions =
-      activePlanIds.length === 0
-        ? `No active plans exist under ${workflowConfig.paths.activePlansDir}.`
-        : `Active plans: ${activePlanIds.join(", ")}`;
-
-    failWithMessage([
-      "Commit blocked: missing `Plan:` trailer",
-      "",
-      "Changes staged under guarded paths must bind the commit to exactly one active plan:",
-      "  Plan: <plan-id>",
-      "",
-      `Example: Plan: ${activePlanIds[0] ?? examplePlanId()}`,
-      suggestions,
-      "",
-      "Allowed alternatives:",
-      "  Plan: none (trivial)",
-      "  Plan: bypass (<reason>)"
-    ]);
-  }
-
-  if (trailer.kind === "invalid") {
-    failWithMessage([
-      "Commit blocked: invalid `Plan:` trailer",
-      "",
-      `Found: ${trailer.found}`,
-      "",
-      "Accepted forms:",
-      "  Plan: <plan-id>",
-      "  Plan: none (trivial)",
-      "  Plan: bypass (<reason>)"
-    ]);
-  }
-
-  if (trailer.kind === "none") {
-    logBypass("none (trivial)", "-");
-    console.log('Plan gate bypassed: "none (trivial)" - logged to .harness-engineering/plan-bypass.log');
-    process.exit(0);
-  }
-
-  if (trailer.kind === "bypass") {
-    logBypass("bypass", trailer.reason);
-    console.log(`Plan gate bypassed: "${trailer.reason}" - logged to .harness-engineering/plan-bypass.log`);
-    process.exit(0);
-  }
-
-  const plan = loadActivePlan(trailer.id);
-  const report = buildPlanReport(plan, { strictOwner: true });
-
-  if (report.errors.length > 0) {
-    const lines = [
-      `Commit blocked: plan ${trailer.id} is not commit-ready`,
-      "",
-      `Plan file: ${toRepoRelativePath(plan.filePath)}`,
-      "",
-      "Issues:",
-      ...report.errors.map((issue) => `  - ${issue}`)
-    ];
-
-    if (report.warnings.length > 0) {
-      lines.push("", "Warnings:");
-      lines.push(...report.warnings.map((warning) => `  - ${warning}`));
-    }
-
-    lines.push(
-      "",
-      "Useful commands:",
-      `  pnpm plan:ensure -- ${trailer.id}`,
-      `  pnpm plan:ensure -- ${trailer.id} --takeover`,
-      `  pnpm plan:check -- ${trailer.id} --strict-owner`,
-    );
-
-    failWithMessage(lines);
-  }
-
-  process.exit(0);
-}
-
 function buildPlanReport(plan, { strictOwner }) {
   const errors = [];
   const warnings = [];
@@ -480,12 +378,12 @@ function buildPlanReport(plan, { strictOwner }) {
   }
 
   if (meta.status === "complete") {
-    errors.push("Completed plans must be archived before more guarded commits are made.");
+    warnings.push("Completed plans should usually be archived before further work continues.");
   }
 
   const claimMissing = claimFields(meta).some((entry) => isUnclaimed(entry.value));
   if (claimMissing) {
-    warnings.push(`Plan is unclaimed. Run \`pnpm plan:ensure -- ${plan.id}\` before guarded commits.`);
+    warnings.push(`Plan is unclaimed. Run \`pnpm plan:ensure -- ${plan.id}\` when you pick this work up.`);
   }
 
   const branchConflicts = branchConflictsForPlan(plan);
@@ -797,61 +695,6 @@ function branchConflictsForPlan(plan) {
   });
 }
 
-function parsePlanTrailer(message) {
-  const matches = message
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("Plan:"));
-
-  if (matches.length === 0) {
-    return { kind: "missing" };
-  }
-  if (matches.length > 1) {
-    return { kind: "invalid", found: matches.join(" | ") };
-  }
-
-  const [line] = matches;
-  if (/^Plan: none \(trivial\)$/.test(line)) {
-    return { kind: "none" };
-  }
-
-  const bypass = line.match(/^Plan: bypass \((.+)\)$/);
-  if (bypass) {
-    return { kind: "bypass", reason: bypass[1] };
-  }
-
-  const normal = line.match(/^Plan:\s+([A-Za-z0-9._-]+)$/);
-  if (normal) {
-    return { kind: "plan", id: normal[1] };
-  }
-
-  return { kind: "invalid", found: line };
-}
-
-function logBypass(kind, reason) {
-  ensureDir(path.dirname(bypassLogPath));
-  fs.appendFileSync(bypassLogPath, `${localTimestamp()} | ${kind} | ${reason}\n`, "utf8");
-}
-
-function stagedFilesInIndex() {
-  const output = process.env.PLAN_STAGED_FILES || gitOutput(["diff", "--cached", "--name-only"], repoRoot);
-  return output
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.replace(/\\/g, "/"));
-}
-
-function guardedPrefixes() {
-  const source = process.env.PLAN_GUARDED_PREFIXES
-    ? process.env.PLAN_GUARDED_PREFIXES.split(",")
-    : workflowConfig.guardedPaths;
-  return source
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .map((value) => value.replace(/\\/g, "/"));
-}
-
 function currentContext() {
   return {
     ownerName: process.env.PLAN_GIT_USER_NAME || gitOutput(["config", "--get", "user.name"], repoRoot),
@@ -1072,17 +915,9 @@ function helpText() {
     "                                       Claim plan ownership for the current user",
     "  status <plan-id> <status>            Update plan status",
     "  archive <plan-id>                    Move a completed plan from active to archive",
-    "  hook <commit-msg-file>               Commit-msg hook entrypoint",
     "",
     "Status values:",
     `  ${Array.from(VALID_STATUSES).join(", ")}`,
-    "",
-    "Normal guarded commit trailer:",
-    "  Plan: <plan-id>",
-    "",
-    "Bypass trailers:",
-    "  Plan: none (trivial)",
-    "  Plan: bypass (<reason>)",
     "",
     "Example:",
     `  pnpm plan:ensure -- ${examplePlanId()}`,

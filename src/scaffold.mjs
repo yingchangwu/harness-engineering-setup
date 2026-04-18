@@ -10,7 +10,6 @@ import {
   normalizeProfile
 } from "./profile-config.mjs";
 import {
-  configureHooks,
   initGitRepo,
   isGitAvailable,
   isGitRepo
@@ -20,6 +19,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const templatesRoot = path.resolve(__dirname, "..", "templates");
 const TEMPLATE_TOKEN_PATTERN = /%%([A-Z0-9_]+)%%/g;
+const LEGACY_REMOVED_PATHS = [
+  ".githooks/commit-msg",
+  ".harness-engineering/plan-bypass.log",
+  "scripts/hooks/install.sh",
+  "scripts/hooks/plan-gate.sh"
+];
 
 export function scaffoldRepository({
   targetDir,
@@ -88,8 +93,8 @@ export function scaffoldRepository({
   fs.writeFileSync(configPath, `${JSON.stringify(workflowConfig, null, 2)}\n`, "utf8");
   writtenFiles.push(".harness-engineering/setup.json");
 
+  cleanupLegacyFiles(absoluteTargetDir);
   upsertPackageJson(absoluteTargetDir, resolvedRepoName);
-  ensureBypassLogIgnored(absoluteTargetDir);
 
   const gitResult = maybeSetupGit(absoluteTargetDir, gitInit);
 
@@ -143,7 +148,6 @@ function maybeSetupGit(targetDir, gitInit) {
     return {
       available: false,
       initialized: false,
-      hooksConfigured: false,
       message: "git is not available on PATH"
     };
   }
@@ -154,7 +158,6 @@ function maybeSetupGit(targetDir, gitInit) {
       return {
         available: true,
         initialized: false,
-        hooksConfigured: false,
         message: "git init skipped"
       };
     }
@@ -164,19 +167,16 @@ function maybeSetupGit(targetDir, gitInit) {
       return {
         available: true,
         initialized: false,
-        hooksConfigured: false,
         message: initResult.stderr || "git init failed"
       };
     }
     initialized = true;
   }
 
-  const hookResult = configureHooks(targetDir);
   return {
     available: true,
     initialized,
-    hooksConfigured: hookResult.ok,
-    message: hookResult.ok ? "core.hooksPath set to .githooks" : hookResult.stderr
+    message: initialized ? "git repository initialized" : "git repository detected"
   };
 }
 
@@ -221,6 +221,26 @@ function renderTemplate(template, context) {
   });
 }
 
+function cleanupLegacyFiles(targetDir) {
+  for (const relativePath of LEGACY_REMOVED_PATHS) {
+    const absolutePath = path.join(targetDir, relativePath);
+    if (!fs.existsSync(absolutePath)) {
+      continue;
+    }
+
+    const stats = fs.statSync(absolutePath);
+    if (stats.isDirectory()) {
+      continue;
+    }
+
+    fs.unlinkSync(absolutePath);
+  }
+
+  removeDirIfEmpty(path.join(targetDir, ".githooks"));
+  removeDirIfEmpty(path.join(targetDir, "scripts", "hooks"));
+  removeGitignoreEntry(targetDir, "/.harness-engineering/plan-bypass.log");
+}
+
 function upsertPackageJson(targetDir, repoName) {
   const packagePath = path.join(targetDir, "package.json");
   const packageJson = fs.existsSync(packagePath)
@@ -250,23 +270,34 @@ function upsertPackageJson(targetDir, repoName) {
   fs.writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
 }
 
-function ensureBypassLogIgnored(targetDir) {
-  const gitignorePath = path.join(targetDir, ".gitignore");
-  const entry = "/.harness-engineering/plan-bypass.log";
-  const current = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf8") : "";
-
-  const lines = current.split(/\r?\n/).filter(Boolean);
-  if (lines.includes(entry)) {
-    return;
-  }
-
-  const next = current.trimEnd() ? `${current.trimEnd()}\n${entry}\n` : `${entry}\n`;
-  fs.writeFileSync(gitignorePath, next, "utf8");
-}
-
 function slugify(value) {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "repo";
+}
+
+function removeDirIfEmpty(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    return;
+  }
+
+  if (fs.readdirSync(dirPath).length === 0) {
+    fs.rmdirSync(dirPath);
+  }
+}
+
+function removeGitignoreEntry(targetDir, entry) {
+  const gitignorePath = path.join(targetDir, ".gitignore");
+  if (!fs.existsSync(gitignorePath)) {
+    return;
+  }
+
+  const lines = fs
+    .readFileSync(gitignorePath, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => line !== entry);
+
+  const content = lines.filter((line, index, all) => !(index === all.length - 1 && line === "")).join("\n");
+  fs.writeFileSync(gitignorePath, content ? `${content}\n` : "", "utf8");
 }

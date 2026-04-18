@@ -8,7 +8,7 @@ Prefix the prompt with:
 [solo] <your request>
 ```
 
-This keeps the task in the current agent only. It does not bypass plan files, hooks, or commit policy.
+This keeps the task in the current agent only. It does not bypass plan files or the repo workflow.
 
 ## Starting a New Task
 
@@ -20,11 +20,7 @@ This keeps the task in the current agent only. It does not bypass plan files, ho
 pnpm plan:ensure -- %%EXAMPLE_PLAN_ID%%
 ```
 
-4. Make guarded commits with:
-
-```text
-Plan: %%EXAMPLE_PLAN_ID%%
-```
+4. Start implementation.
 
 ## Resuming a Task
 
@@ -44,36 +40,6 @@ Explicit takeover:
 
 ```bash
 pnpm plan:ensure -- %%EXAMPLE_PLAN_ID%% --takeover
-```
-
-## Commit Gate
-
-The commit-msg hook blocks guarded commits when:
-
-- there is no `Plan: <plan-id>` trailer
-- the plan id does not exist in `%%ACTIVE_PLANS_DIR%%`
-- Compliance Check items are still unchecked
-- the plan still contains `OPEN` ambiguities
-- owner email or branch metadata no longer match the current git context
-- two active plans claim the same branch with different owners
-
-Normal trailer:
-
-```text
-Plan: <plan-id>
-```
-
-Bypass trailers:
-
-```text
-Plan: none (trivial)
-Plan: bypass (<reason>)
-```
-
-Bypass audit log:
-
-```text
-.harness-engineering/plan-bypass.log
 ```
 
 ## Tracker Guidance

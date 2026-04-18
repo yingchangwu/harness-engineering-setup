@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { readHooksPath, isGitAvailable, isGitRepo } from "./git.mjs";
+import { isGitAvailable, isGitRepo } from "./git.mjs";
 import { managedRelativePathsForConfig } from "./scaffold.mjs";
 
 export function doctorRepository(targetDir) {
@@ -67,17 +67,11 @@ export function doctorRepository(targetDir) {
   }
 
   if (!isGitAvailable()) {
-    checks.push(fail("git", "git is not available on PATH"));
+    checks.push(pass("git", "git is not available on PATH"));
   } else if (!isGitRepo(absoluteTargetDir)) {
-    checks.push(fail("git repo", "directory is not a git repository"));
+    checks.push(pass("git repo", "directory is not a git repository"));
   } else {
     checks.push(pass("git repo", "repository detected"));
-    const hooksPath = readHooksPath(absoluteTargetDir);
-    if (hooksPath === ".githooks") {
-      checks.push(pass("git hooks", "core.hooksPath = .githooks"));
-    } else {
-      checks.push(fail("git hooks", `core.hooksPath is ${hooksPath || "<empty>"}`));
-    }
   }
 
   return {

@@ -1,7 +1,7 @@
 {
   "name": "he-setup-cli",
-  "version": "0.1.0",
-  "description": "Scaffold reusable harness-engineering workflow files, hooks, and agent setup into any repo.",
+  "version": "0.1.1",
+  "description": "Scaffold reusable harness-engineering workflow files, plan tooling, and agent setup into any repo.",
   "type": "module",
   "bin": {
     "he-setup": "./bin/harness-engineering-setup.mjs",
